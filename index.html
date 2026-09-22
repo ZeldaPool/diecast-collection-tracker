@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Diecast Collection</title>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -448,8 +447,8 @@
   <label class="drop-zone" id="drop-zone" for="file-input">
     <span class="dz-icon">🏎️</span>
     <h2>Load your collection</h2>
-    <p>Click or drag &amp; drop your Excel file here</p>
-    <input type="file" id="file-input" accept=".xlsx,.xls">
+    <p>Click or drag &amp; drop your CSV file here</p>
+    <input type="file" id="file-input" accept=".csv">
   </label>
 </div>
 
@@ -532,12 +531,45 @@ function getBrandGroup(mfr) {
   return match || 'Others';
 }
 
-// ── Parse Excel ─────────────────────────────────────────────────────────────
+// ── Parse CSV ────────────────────────────────────────────────────────────────
 // Expected columns: Diecast Manufacturer, Car Company, Car Model, Region, Image URL
-function parseExcel(buffer) {
-  const wb   = XLSX.read(buffer, { type: 'array' });
-  const ws   = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+function parseCSVRows(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(field); field = '';
+    } else if (c === '\r') {
+      // ignore — the \n that follows ends the row
+    } else if (c === '\n') {
+      row.push(field); field = '';
+      rows.push(row); row = [];
+    } else {
+      field += c;
+    }
+  }
+  if (field !== '' || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function parseCollection(text) {
+  const rows = parseCSVRows(text);
 
   const cars = [];
   for (let i = 1; i < rows.length; i++) {
@@ -751,8 +783,8 @@ function closeModal() {
 }
 
 // ── Load data ────────────────────────────────────────────────────────────────
-function loadCars(buffer) {
-  allCars       = parseExcel(buffer);
+function loadCars(text) {
+  allCars       = parseCollection(text);
   activeTab     = 'All';
   searchQuery   = '';
   selectedRegions.clear();
@@ -773,8 +805,8 @@ document.getElementById('file-input').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = ev => loadCars(new Uint8Array(ev.target.result));
-  reader.readAsArrayBuffer(file);
+  reader.onload = ev => loadCars(ev.target.result);
+  reader.readAsText(file);
 });
 
 const dz = document.getElementById('drop-zone');
@@ -786,18 +818,18 @@ dz.addEventListener('drop', e => {
   const file = e.dataTransfer.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = ev => loadCars(new Uint8Array(ev.target.result));
-  reader.readAsArrayBuffer(file);
+  reader.onload = ev => loadCars(ev.target.result);
+  reader.readAsText(file);
 });
 
 // ── Auto-load from a hosted file ────────────────────────────────────────────
-// When deployed, drop a file named diecast-collection.xlsx next to this HTML
+// When deployed, drop a file named diecast-collection.csv next to this HTML
 // file and it loads automatically — the drag & drop screen only shows up as
 // a fallback (e.g. local testing) if that fetch fails.
-const EXCEL_URL = './diecast-collection.xlsx';
-fetch(EXCEL_URL, { cache: 'no-store' })
-  .then(res => { if (!res.ok) throw new Error('no hosted file'); return res.arrayBuffer(); })
-  .then(buf => loadCars(new Uint8Array(buf)))
+const CSV_URL = './diecast-collection.csv';
+fetch(CSV_URL, { cache: 'no-store' })
+  .then(res => { if (!res.ok) throw new Error('no hosted file'); return res.text(); })
+  .then(text => loadCars(text))
   .catch(() => { /* stay on the drag & drop loader */ });
 </script>
 </body>
