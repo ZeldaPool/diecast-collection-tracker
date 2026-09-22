@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diecast Collection</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0b1012;
+    --surface: #141b1d;
+    --surface2: #1c2427;
+    --border: #2a3336;
+    --accent: #2dd4bf;
+    --accent-dark: #14b8a6;
+    --text: #eef3f3;
+    --muted: #8b9a9c;
+    --radius: 14px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ── Loader ── */
+  #loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 2rem;
+    gap: 1.5rem;
+    background: var(--bg);
+  }
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 3.5rem 5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    width: 100%;
+    max-width: 460px;
+    background: var(--surface);
+  }
+  .drop-zone:hover, .drop-zone.dragging {
+    border-color: var(--accent);
+    background: rgba(45, 212, 191, 0.08);
+  }
+  .drop-zone input { display: none; }
+  .drop-zone .dz-icon { font-size: 3rem; margin-bottom: 1rem; display: block; }
+  .drop-zone h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.4rem; color: var(--text); }
+  .drop-zone p { color: var(--muted); font-size: 0.87rem; }
+
+  /* ── App ── */
+  #app { display: none; }
+
+  /* ── Header ── */
+  header {
+    padding: 1.1rem 1.5rem 0.9rem;
+    text-align: center;
+    background: var(--surface);
+    border-bottom: 3px solid var(--accent-dark);
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: '🚗🏎️🚙🚕🚗🏎️🚙🚕🚗🏎️🚙';
+    position: absolute;
+    top: -6px; left: 0; right: 0;
+    font-size: 1.1rem;
+    opacity: 0.1;
+    letter-spacing: 6px;
+    pointer-events: none;
+  }
+  header h1 {
+    font-size: clamp(1.3rem, 2.6vw, 1.8rem);
+    font-weight: 900;
+    letter-spacing: -1px;
+    color: var(--accent);
+    margin-bottom: 0;
+    position: relative;
+  }
+  header p { display: none; }
+
+  /* ── Tabs ── */
+  .tabs-wrap {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(11, 16, 18, 0.92);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 1.5rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .tabs-wrap::-webkit-scrollbar { display: none; }
+  .tabs {
+    display: flex;
+    gap: 0;
+    min-width: max-content;
+  }
+  .tab-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 1rem 1.1rem 0.85rem;
+    cursor: pointer;
+    position: relative;
+    transition: color 0.2s;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--text); }
+  .tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--accent);
+    border-radius: 3px 3px 0 0;
+  }
+  .tab-count {
+    background: var(--surface2);
+    border-radius: 999px;
+    padding: 0.1rem 0.45rem;
+    font-size: 0.68rem;
+    color: var(--muted);
+  }
+  .tab-btn.active .tab-count {
+    background: var(--accent);
+    color: #1a1814;
+    font-weight: 800;
+  }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding: 1rem 1.5rem 0;
+  }
+  .search-input {
+    flex: 1;
+    min-width: 200px;
+    padding: 0.6rem 0.9rem;
+    border: 1.5px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    background: var(--surface);
+    color: var(--text);
+  }
+  .search-input:focus {
+    outline: none;
+    border-color: var(--accent-dark);
+  }
+  .filter-wrap { position: relative; }
+  .filter-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1.1rem;
+    border: 1.5px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .filter-btn:hover { border-color: var(--accent); }
+  .filter-btn.active-filters { border-color: var(--accent-dark); background: rgba(45, 212, 191, 0.1); }
+  .filter-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 60;
+    min-width: 220px;
+    max-height: 380px;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.14);
+    padding: 1rem;
+  }
+  .filter-panel.open { display: block; }
+  .filter-panel h4 {
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--muted);
+    margin-bottom: 0.6rem;
+  }
+  .filter-panel h4.filter-section-gap {
+    margin-top: 0.9rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--border);
+  }
+  .filter-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .filter-option input { cursor: pointer; }
+  .filter-panel-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.7rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid var(--border);
+  }
+  .filter-clear-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-family: inherit;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .filter-clear-btn:hover { color: var(--text); }
+
+  /* ── Cards grid ── */
+  #cards-section {
+    padding: 1.5rem;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+    gap: 1rem;
+  }
+
+  /* ── Card ── */
+  .card {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+  .card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
+    border-color: var(--accent);
+  }
+  .card-thumb {
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: var(--surface2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .card-thumb::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg,
+      rgba(45,212,191,0.12) 0%,
+      rgba(45,212,191,0.04) 100%);
+  }
+  .card-thumb span { position: relative; z-index: 1; }
+  .card-thumb img {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .card-info {
+    padding: 0.75rem;
+    border-top: 1.5px solid var(--border);
+  }
+  .card-make {
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.9px;
+    margin-bottom: 0.2rem;
+  }
+  .card-model {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.3;
+  }
+  .card-sub {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-top: 0.2rem;
+  }
+
+  /* ── Modal ── */
+  #modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(6px);
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  #modal.open { display: flex; }
+  .modal-box {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 20px;
+    width: 100%;
+    max-width: 480px;
+    overflow: hidden;
+    animation: modal-in 0.22s ease;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.18);
+  }
+  @keyframes modal-in {
+    from { opacity: 0; transform: scale(0.94) translateY(10px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  .modal-img {
+    width: 100%;
+    aspect-ratio: 16/9;
+    background: var(--surface2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 5rem;
+    position: relative;
+  }
+  .modal-img::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg,
+      rgba(255,255,255,0.15) 0%,
+      transparent 100%);
+  }
+  .modal-img span { position: relative; z-index: 1; }
+  .modal-img img {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .modal-body { padding: 1.5rem; }
+  .modal-brand {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.3rem;
+  }
+  .modal-name {
+    font-size: 1.4rem;
+    font-weight: 800;
+    line-height: 1.2;
+    margin-bottom: 0.8rem;
+    color: var(--text);
+  }
+  .modal-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1rem 0;
+  }
+  .modal-row {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 0.35rem 0.75rem;
+    align-items: start;
+    margin-bottom: 0.6rem;
+  }
+  .modal-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    padding-top: 1px;
+  }
+  .modal-value {
+    font-size: 0.9rem;
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .modal-close {
+    position: absolute;
+    top: 1rem; right: 1rem;
+    background: rgba(255,255,255,0.1);
+    border: none;
+    border-radius: 50%;
+    width: 34px; height: 34px;
+    color: var(--text);
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    line-height: 1;
+  }
+  .modal-close:hover { background: rgba(255,255,255,0.2); }
+  .modal-box { position: relative; }
+
+  /* ── Empty state ── */
+  .empty {
+    text-align: center;
+    padding: 5rem 2rem;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+  .empty .e-icon { font-size: 3rem; margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+
+<!-- Load screen -->
+<div id="loader">
+  <label class="drop-zone" id="drop-zone" for="file-input">
+    <span class="dz-icon">🏎️</span>
+    <h2>Load your collection</h2>
+    <p>Click or drag &amp; drop your Excel file here</p>
+    <input type="file" id="file-input" accept=".xlsx,.xls">
+  </label>
+</div>
+
+<!-- Main app -->
+<div id="app">
+  <header>
+    <h1>🚗 Diecast Collection</h1>
+  </header>
+
+  <div class="tabs-wrap">
+    <div class="tabs" id="tabs"></div>
+  </div>
+
+  <div class="toolbar">
+    <input type="text" id="search-input" class="search-input" placeholder="Search by model, company, or region…">
+    <div class="filter-wrap">
+      <button type="button" class="filter-btn" id="filter-btn">
+        Filters <span class="tab-count" id="filter-count" style="display:none">0</span>
+      </button>
+      <div class="filter-panel" id="filter-panel">
+        <h4>Manufacturer</h4>
+        <div id="filter-companies"></div>
+        <h4 class="filter-section-gap">Region</h4>
+        <div id="filter-regions"></div>
+        <div class="filter-panel-actions">
+          <button type="button" class="filter-clear-btn" id="filter-clear">Clear filters</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="cards-section">
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty" style="display:none">
+      <div class="e-icon">🔍</div>
+      No cars match your search/filters.
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="modal">
+  <div class="modal-box" id="modal-box">
+    <button class="modal-close" id="modal-close">✕</button>
+    <div class="modal-img" id="m-img"><span>🚗</span></div>
+    <div class="modal-body">
+      <div class="modal-brand" id="m-brand"></div>
+      <div class="modal-name" id="m-name"></div>
+      <hr class="modal-divider">
+      <div id="m-diecast-row" class="modal-row">
+        <span class="modal-label">Diecast Brand</span>
+        <span class="modal-value" id="m-diecast"></span>
+      </div>
+      <div id="m-region-row" class="modal-row">
+        <span class="modal-label">Region</span>
+        <span class="modal-value" id="m-region"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Brand grouping ──────────────────────────────────────────────────────────
+const KNOWN_BRANDS = [
+  'HW Mainline', 'HW Silver', 'HW MultiPack', 'HW Premium', 'HW Elite64',
+  'Mini GT', 'Kaido House', 'Pop Race', 'Tarmac Works',
+  'Majorette', 'Maisto', 'Inno64', 'Tomica'
+];
+
+// Sheet typos/variants that should still land in the right tab
+const BRAND_ALIASES = {
+  'hw mutli-pack': 'HW MultiPack',
+  'hw elite 64':   'HW Elite64'
+};
+
+function getBrandGroup(mfr) {
+  const m = (mfr || '').trim().toLowerCase();
+  if (BRAND_ALIASES[m]) return BRAND_ALIASES[m];
+  const match = KNOWN_BRANDS.find(b => b.toLowerCase() === m);
+  return match || 'Others';
+}
+
+// ── Parse Excel ─────────────────────────────────────────────────────────────
+// Expected columns: Diecast Manufacturer, Car Company, Car Model, Region, Image URL
+function parseExcel(buffer) {
+  const wb   = XLSX.read(buffer, { type: 'array' });
+  const ws   = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+  const cars = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r   = rows[i];
+    const mfr = String(r[0] || '').trim();
+    const co  = String(r[1] || '').trim();
+    if (!mfr || !co) continue;
+
+    const model  = String(r[2] || '').trim();
+    const region = String(r[3] || '').trim();
+    const image  = String(r[4] || '').trim();
+
+    cars.push({ mfr, co, model, region, image, brand: getBrandGroup(mfr) });
+  }
+
+  return cars;
+}
+
+// ── Render ──────────────────────────────────────────────────────────────────
+let allCars = [];
+let activeTab = 'All';
+let searchQuery = '';
+let selectedRegions = new Set();
+let selectedCompanies = new Set();
+
+const BRAND_ORDER = ['All', ...KNOWN_BRANDS, 'Others'];
+
+function matchesSearch(car) {
+  if (!searchQuery) return true;
+  const hay = [car.mfr, car.co, car.model, car.region].join(' ').toLowerCase();
+  return hay.includes(searchQuery.toLowerCase());
+}
+
+function matchesRegionFilter(car) {
+  if (selectedRegions.size === 0) return true;
+  return selectedRegions.has(car.region);
+}
+
+function matchesCompanyFilter(car) {
+  if (selectedCompanies.size === 0) return true;
+  return selectedCompanies.has(car.co);
+}
+
+function getCarsForTab(tab) {
+  const base = tab === 'All' ? allCars : allCars.filter(c => c.brand === tab);
+  return base
+    .filter(c => matchesSearch(c) && matchesRegionFilter(c) && matchesCompanyFilter(c))
+    .sort((a, b) => a.co.localeCompare(b.co));
+}
+
+function renderTabs() {
+  const tabsEl = document.getElementById('tabs');
+  tabsEl.innerHTML = '';
+
+  const brandsPresent = new Set(allCars.map(c => c.brand));
+
+  BRAND_ORDER.forEach(tab => {
+    if (tab !== 'All' && !brandsPresent.has(tab)) return;
+
+    const count = tab === 'All' ? allCars.length : allCars.filter(c => c.brand === tab).length;
+    if (count === 0 && tab !== 'All') return;
+
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn' + (tab === activeTab ? ' active' : '');
+    btn.dataset.tab = tab;
+    btn.innerHTML = `${tab} <span class="tab-count">${count}</span>`;
+    btn.addEventListener('click', () => switchTab(tab));
+    tabsEl.appendChild(btn);
+  });
+}
+
+function handleImgError(img) {
+  const span = document.createElement('span');
+  span.textContent = '🚗';
+  img.replaceWith(span);
+}
+
+function thumbHTML(car) {
+  if (!car.image) return '<span>🚗</span>';
+  const alt = [car.co, car.model].filter(Boolean).join(' ');
+  return `<img src="${car.image}" alt="${alt}" loading="lazy" onerror="handleImgError(this)">`;
+}
+
+function renderCards(cars) {
+  const grid  = document.getElementById('grid');
+  const empty = document.getElementById('empty');
+  grid.innerHTML = '';
+
+  if (cars.length === 0) {
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  cars.forEach(car => {
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    const modelDisplay = car.model || '';
+
+    card.innerHTML = `
+      <div class="card-thumb">${thumbHTML(car)}</div>
+      <div class="card-info">
+        <div class="card-make">${car.co}</div>
+        <div class="card-model">${modelDisplay || '—'}</div>
+        ${car.mfr ? `<div class="card-sub">${car.mfr}</div>` : ''}
+      </div>`;
+
+    card.addEventListener('click', () => openModal(car));
+    grid.appendChild(card);
+  });
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  renderCards(getCarsForTab(tab));
+}
+
+// ── Search & filter ─────────────────────────────────────────────────────────
+const filterBtn   = document.getElementById('filter-btn');
+const filterPanel = document.getElementById('filter-panel');
+
+document.getElementById('search-input').addEventListener('input', e => {
+  searchQuery = e.target.value.trim();
+  renderCards(getCarsForTab(activeTab));
+});
+
+filterBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  filterPanel.classList.toggle('open');
+});
+document.addEventListener('click', e => {
+  if (!filterPanel.contains(e.target) && !filterBtn.contains(e.target)) {
+    filterPanel.classList.remove('open');
+  }
+});
+
+function renderFilterGroup(containerId, values, selectedSet, emptyMsg) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+
+  if (values.length === 0) {
+    container.innerHTML = `<p style="font-size:0.8rem;color:var(--muted);">${emptyMsg}</p>`;
+    return;
+  }
+
+  values.forEach(value => {
+    const label = document.createElement('label');
+    label.className = 'filter-option';
+    label.innerHTML = `<input type="checkbox"> ${value}`;
+    label.querySelector('input').addEventListener('change', e => {
+      if (e.target.checked) selectedSet.add(value);
+      else selectedSet.delete(value);
+      updateFilterCount();
+      renderCards(getCarsForTab(activeTab));
+    });
+    container.appendChild(label);
+  });
+}
+
+function renderFilterPanel() {
+  const companies = [...new Set(allCars.map(c => c.co).filter(Boolean))].sort();
+  const regions   = [...new Set(allCars.map(c => c.region).filter(Boolean))].sort();
+  renderFilterGroup('filter-companies', companies, selectedCompanies, 'No manufacturer data.');
+  renderFilterGroup('filter-regions', regions, selectedRegions, 'No region data.');
+}
+
+function updateFilterCount() {
+  const badge = document.getElementById('filter-count');
+  const n = selectedRegions.size + selectedCompanies.size;
+  badge.style.display = n > 0 ? 'inline-block' : 'none';
+  badge.textContent = n;
+  filterBtn.classList.toggle('active-filters', n > 0);
+}
+
+document.getElementById('filter-clear').addEventListener('click', () => {
+  selectedRegions.clear();
+  selectedCompanies.clear();
+  document.querySelectorAll('#filter-regions input[type=checkbox], #filter-companies input[type=checkbox]').forEach(cb => cb.checked = false);
+  updateFilterCount();
+  renderCards(getCarsForTab(activeTab));
+});
+
+// ── Modal ────────────────────────────────────────────────────────────────────
+function openModal(car) {
+  document.getElementById('m-img').innerHTML = thumbHTML(car);
+  document.getElementById('m-brand').textContent   = car.co;
+  document.getElementById('m-name').textContent    = [car.co, car.model].filter(Boolean).join(' ');
+  document.getElementById('m-diecast').textContent  = car.mfr;
+
+  const regionRow = document.getElementById('m-region-row');
+  if (car.region) {
+    document.getElementById('m-region').textContent = car.region;
+    regionRow.style.display = 'grid';
+  } else {
+    regionRow.style.display = 'none';
+  }
+
+  document.getElementById('modal').classList.add('open');
+}
+
+document.getElementById('modal-close').addEventListener('click', closeModal);
+document.getElementById('modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal')) closeModal();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+}
+
+// ── Load data ────────────────────────────────────────────────────────────────
+function loadCars(buffer) {
+  allCars       = parseExcel(buffer);
+  activeTab     = 'All';
+  searchQuery   = '';
+  selectedRegions.clear();
+  selectedCompanies.clear();
+  document.getElementById('search-input').value = '';
+
+  document.getElementById('loader').style.display = 'none';
+  document.getElementById('app').style.display    = 'block';
+
+  renderTabs();
+  renderFilterPanel();
+  updateFilterCount();
+  renderCards(getCarsForTab('All'));
+}
+
+// ── File input ───────────────────────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => loadCars(new Uint8Array(ev.target.result));
+  reader.readAsArrayBuffer(file);
+});
+
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('dragging'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragging'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('dragging');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => loadCars(new Uint8Array(ev.target.result));
+  reader.readAsArrayBuffer(file);
+});
+
+// ── Auto-load from a hosted file ────────────────────────────────────────────
+// When deployed, drop a file named diecast-collection.xlsx next to this HTML
+// file and it loads automatically — the drag & drop screen only shows up as
+// a fallback (e.g. local testing) if that fetch fails.
+const EXCEL_URL = './diecast-collection.xlsx';
+fetch(EXCEL_URL, { cache: 'no-store' })
+  .then(res => { if (!res.ok) throw new Error('no hosted file'); return res.arrayBuffer(); })
+  .then(buf => loadCars(new Uint8Array(buf)))
+  .catch(() => { /* stay on the drag & drop loader */ });
+</script>
+</body>
+</html>
